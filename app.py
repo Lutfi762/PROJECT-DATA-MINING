@@ -4,7 +4,6 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import plotly.express as px
-from io import BytesIO
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.naive_bayes import GaussianNB
@@ -12,8 +11,22 @@ from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.cluster import KMeans
+
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, mean_squared_error, r2_score
-from sklearn.utils.multiclass import type_of_target
+
+# Inisialisasi session state
+if 'model' not in st.session_state:
+    st.session_state.model = None
+if 'input_data' not in st.session_state:
+    st.session_state.input_data = {}
+if 'X' not in st.session_state:
+    st.session_state.X = None
+if 'target' not in st.session_state:
+    st.session_state.target = None
+if 'algo' not in st.session_state:
+    st.session_state.algo = None
+if 'prediction_result' not in st.session_state:
+    st.session_state.prediction_result = None
 
 # Konfigurasi halaman
 st.set_page_config(page_title="🧠 Aplikasi Analisis & Prediksi CSV", layout="centered")
@@ -149,13 +162,17 @@ if uploaded_file:
         "Regresi Linier", "Regresi Logistik", "Naive Bayes",
         "SVM", "KNN", "Decision Tree", "K-Means"
     ])
+    st.session_state.algo = algo  # Simpan algoritma yang dipilih di session state
 
     if algo == "K-Means":
         n_clusters = st.slider("Pilih Jumlah Cluster", min_value=2, max_value=10, value=3)
         X = df.select_dtypes(include=np.number)
+        st.session_state.X = X.columns.tolist()  # Simpan daftar fitur
     else:
         target = st.selectbox("Pilih Kolom Target", df.columns)
+        st.session_state.target = target  # Simpan target di session state
         X = pd.get_dummies(df.drop(columns=[target]))
+        st.session_state.X = X.columns.tolist()  # Simpan daftar fitur
         y = df[target]
 
         def is_classification(y):
@@ -176,11 +193,11 @@ if uploaded_file:
     # Tombol tetap di luar
     if st.button("🚀 Jalankan Model"):
         st.markdown("## 🧪 Hasil Model")
-        # lanjutkan model training & evaluasi di sini
-
+            
         if algo == "Regresi Linier":
             model = LinearRegression().fit(X_train, y_train)
             y_pred = model.predict(X_test)
+            st.session_state.model = model  # Simpan model di session state
             st.metric("R² Score", f"{r2_score(y_test, y_pred):.2f}")
             st.metric("MSE", f"{mean_squared_error(y_test, y_pred):.2f}")
             st.plotly_chart(px.scatter(x=y_test, y=y_pred, labels={'x': 'Aktual', 'y': 'Prediksi'}))
@@ -188,6 +205,7 @@ if uploaded_file:
         elif algo == "Regresi Logistik":
             model = LogisticRegression(max_iter=1000).fit(X_train, y_train)
             y_pred = model.predict(X_test)
+            st.session_state.model = model  # Simpan model di session state
             st.metric("Akurasi", f"{accuracy_score(y_test, y_pred):.2f}")
             st.text(classification_report(y_test, y_pred))
             st.plotly_chart(px.imshow(confusion_matrix(y_test, y_pred), text_auto=True))
@@ -196,6 +214,7 @@ if uploaded_file:
             try:
                 model = GaussianNB().fit(X_train, y_train)
                 y_pred = model.predict(X_test)
+                st.session_state.model = model  # Simpan model di session state
                 st.metric("Akurasi", f"{accuracy_score(y_test, y_pred):.2f}")
                 st.text(classification_report(y_test, y_pred))
             except ValueError as e:
@@ -203,15 +222,20 @@ if uploaded_file:
                 model = None
 
         elif algo == "SVM":
-            model = SVC().fit(X_train, y_train)
-            y_pred = model.predict(X_test)
-            st.metric("Akurasi", f"{accuracy_score(y_test, y_pred):.2f}")
-            st.text(classification_report(y_test, y_pred))
-            st.plotly_chart(px.imshow(confusion_matrix(y_test, y_pred), text_auto=True))
+            if is_classification(y):
+                model = SVC().fit(X_train, y_train)
+                y_pred = model.predict(X_test)
+                st.session_state.model = model  # Simpan model di session state
+                st.metric("Akurasi", f"{accuracy_score(y_test, y_pred):.2f}")
+                st.text(classification_report(y_test, y_pred))
+                st.plotly_chart(px.imshow(confusion_matrix(y_test, y_pred), text_auto=True))
+            else:
+                st.error("❌ SVM hanya dapat digunakan untuk masalah klasifikasi.")
 
         elif algo == "KNN":
             model = KNeighborsClassifier().fit(X_train, y_train)
             y_pred = model.predict(X_test)
+            st.session_state.model = model  # Simpan model di session state
             st.metric("Akurasi", f"{accuracy_score(y_test, y_pred):.2f}")
             st.text(classification_report(y_test, y_pred))
             st.plotly_chart(px.imshow(confusion_matrix(y_test, y_pred), text_auto=True))
@@ -219,6 +243,7 @@ if uploaded_file:
         elif algo == "Decision Tree":
             model = DecisionTreeClassifier().fit(X_train, y_train)
             y_pred = model.predict(X_test)
+            st.session_state.model = model  # Simpan model di session state
             st.metric("Akurasi", f"{accuracy_score(y_test, y_pred):.2f}")
             st.text(classification_report(y_test, y_pred))
             st.plotly_chart(px.imshow(confusion_matrix(y_test, y_pred), text_auto=True))
@@ -238,36 +263,117 @@ if uploaded_file:
                                  title="Visualisasi Cluster (2D)", labels={'color': 'Cluster'})
                 st.plotly_chart(fig)
 
-        # === Prediksi Manual ===
-        if 'model' in locals() and model is not None:
-            st.subheader("🧠 Prediksi Manual")
-            st.markdown("Masukkan data untuk memprediksi hasil menggunakan model yang telah dilatih.")
+# === Prediksi Manual ===
+if st.session_state.model is not None:
+    st.subheader("🧠 Prediksi Manual")
+    st.markdown("Masukkan nilai untuk setiap fitur untuk mendapatkan prediksi:")
+    
+    with st.form(key='prediction_form'):
+        input_data = {}
+        
+        # Pastikan st.session_state.X tidak None
+        if st.session_state.X is not None:
+            # Buat input untuk setiap fitur
+            for col in st.session_state.X:
+                # Handle kolom numerik
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    min_val = float(df[col].min())
+                    max_val = float(df[col].max())
+                    default_val = float(df[col].mean())
+                    
+                    # Pastikan step sesuai dengan tipe data
+                    if df[col].dtype == 'float64':
+                        step = 0.1  # float step
+                    else:
+                        step = 1  # int step
+                    
+                    input_data[col] = st.number_input(
+                        f"{col} (min: {min_val:.2f}, max: {max_val:.2f})",
+                        min_value=min_val,
+                        max_value=max_val,
+                        value=default_val,
+                        step=float(step)  # Pastikan step adalah float
+                    )
+                # Handle kolom kategorikal (jika ada)
+                else:
+                    unique_vals = df[col].unique()
+                    input_data[col] = st.selectbox(f"{col}", unique_vals)
+        else:
+            st.error("❌ Tidak ada fitur yang tersedia untuk prediksi. Pastikan model telah dilatih dengan benar.")
 
+        # Tambahkan tombol kirim
+        submitted = st.form_submit_button("🔮 Prediksi")
+        
+        if submitted:
             try:
-                input_data = {}
-                manual_input_cols = X.columns.tolist()
-
-                for col in manual_input_cols:
-                    input_data[col] = st.number_input(f"{col}", value=float(X[col].mean()))
-
+                # Buat DataFrame dari input
                 input_df = pd.DataFrame([input_data])
-                manual_pred = model.predict(input_df)[0]
-                st.success(f"📌 Hasil Prediksi Manual: **{manual_pred}**")
+                
+                # Handle one-hot encoding jika ada
+                input_df = pd.get_dummies(input_df)
+                
+                # Pastikan kolom input sama dengan yang digunakan saat training
+                missing_cols = set(X.columns) - set(input_df.columns)
+                for col in missing_cols:
+                    input_df[col] = 0
+                input_df = input_df[X.columns]
+                
+                # Dapatkan prediksi
+                prediction = st.session_state.model.predict(input_df)[0]
+                
+                # Tampilkan hasil prediksi
+                st.success(f"📌 Hasil Prediksi Manual: **{prediction}**")
+
+                # Penjelasan hasil prediksi
+                st.markdown("### 📊 Interpretasi Hasil")
+                
+                if st.session_state.algo == "Regresi Linier":
+                    target_min = df[st.session_state.target].min()
+                    target_max = df[st.session_state.target].max()
+                    target_range = target_max - target_min
+                    normalized = (prediction - target_min) / target_range
+                    
+                    st.markdown(f"""
+                    - **Nilai Prediksi:** {prediction:.2f}
+                    - **Rentang Target dalam Data:** {target_min:.2f} sampai {target_max:.2f}
+                    """)
+                    
+                    if prediction < target_min:
+                        st.warning("Prediksi berada DI BAWAH rentang data training")
+                    elif prediction > target_max:
+                        st.warning("Prediksi berada DI ATAS rentang data training")
+                    else:
+                        st.info(f"Prediksi berada di {normalized*100:.1f}% dari rentang data")
+                        
+                    # Tampilkan faktor penting
+                    if hasattr(st.session_state.model, 'coef_'):
+                        st.markdown("### 🔍 Faktor Paling Berpengaruh")
+                        coef_df = pd.DataFrame({
+                            'Fitur': X.columns,
+                            'Koefisien': st.session_state.model.coef_
+                        }).sort_values('Koefisien', key=abs, ascending=False)
+                        
+                        top_features = coef_df.head(3)
+                        for _, row in top_features.iterrows():
+                            effect = "meningkatkan" if row['Koefisien'] > 0 else "menurunkan"
+                            st.write(f"- **{row['Fitur']}**: {effect} hasil prediksi")
+                
+                elif st.session_state.algo in ["Regresi Logistik", "Naive Bayes", "SVM", "KNN", "Decision Tree"]:
+                    st.markdown(f"**Kelas Prediksi:** {prediction}")
+                    
+                    # Tampilkan probabilitas jika ada
+                    if hasattr(st.session_state.model, "predict_proba"):
+                        proba = st.session_state.model.predict_proba(input_df)[0]
+                        proba_df = pd.DataFrame({
+                            'Kelas': st.session_state.model.classes_,
+                            'Probabilitas': proba
+                        }).sort_values('Probabilitas', ascending=False)
+                        
+                        st.markdown("**Probabilitas Kelas:**")
+                        st.dataframe(proba_df)
 
             except Exception as e:
-                st.error(f"Gagal menampilkan form input: {e}")
-
-            # Analisis Pengaruh Fitur
-            if algo == "Naive Bayes" and 'sex' in X.columns:
-                st.markdown("### 📍 Pengaruh Fitur: `sex` terhadap Prediksi")
-                mean_by_class = df.groupby(y)['sex'].mean()
-                st.write("Rata-rata nilai `sex` per kelas target:")
-                st.write(mean_by_class)
-                st.markdown(f"""
-**Interpretasi:**
-- Nilai rata-rata `sex` pada kelas target menunjukkan pengaruhnya terhadap prediksi.
-- Semakin tinggi perbedaan rata-rata antar kelas, semakin kuat pengaruh fitur tersebut.
-""")
+                st.error(f"Terjadi error saat memprediksi: {str(e)}")
 
 else:
     st.info("📌 Silakan Upload File CSV untuk mulai analisis.")
